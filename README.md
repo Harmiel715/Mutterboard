@@ -1,145 +1,56 @@
-# vboard
-*A virtual keyboard for Linux with Wayland support and extensive customization options.*
+# MutterBoard
 
+更接近原生硬件键盘行为的 Wayland 屏幕键盘（当前仍保持非 wlroots 场景范围）。
 
-<img src="https://github.com/user-attachments/assets/66e9a879-c677-429f-bd11-503d10e63c2b" width="400">
+## 本次重点
+- 组合键行为重做为“接近硬件键盘”模型：
+  - 修饰键按下发送 key-down，释放发送 key-up。
+  - 支持任意组合传递到焦点窗口（如 `Ctrl+C` / `Ctrl+V`）。
+- 支持粘滞修饰键（单击锁定，下一次输入后自动释放），并保留 Shift 双击快捷键。
+- 新增 CapsLock 状态提示（`Caps: On/Off`），方便随时确认是否大写锁定。
+- 修复快速连续点按场景（例如上一键未完全释放时按下一键）导致漏字母的问题。
+- Shift 激活时，符号键位动态显示转换字符（如 `1 -> !`）。
+- 主题系统重做（Dark / Light / Midnight），提升深浅色对比和可读性。
+- 新增字体大小调节（A+ / A-），可按个人视觉习惯调整。
+- 界面贴边优化：移除额外拖动条，减少多余空隙，主体内容更贴近窗口边界。
 
-## Overview
-vboard is a lightweight, customizable virtual keyboard designed for Linux systems with Wayland support. It provides an on-screen keyboard solution that's especially useful for:
+## 兼容性说明（保持原硬限制）
+- 仍保持原脚本可用范围，不主动扩展到 wlroots。
+- 使用 `GDK_BACKEND=x11`，目标仍是原先可正常使用的 Wayland 会话类型。
 
-- Touchscreen devices without physical keyboards
-- Systems with malfunctioning physical keyboards
-- Accessibility needs
-- Kiosk applications
-
-The keyboard supports customizable colors, opacity settings, and can be easily modified to support different layouts.
-
-## Features
-- **Customizable appearance**: Change background color, text color, and opacity
-- **Persistent settings**: Configuration is saved between sessions
-- **Modifier key support**: Use Shift, Ctrl, Alt and Super keys
-- **Hold for repetitive clicks**: Keep holding the mouse button to trigger repeated clicks
-- **Compact interface**: Headerbar with minimal controls to save screen space
-- **Always-on-top**: Stays above other windows for easy access
-
-### **1. Install Dependencies**  
-Install  `python-uinput steam-devices` packages using your package manager:  
-
-**For Debian/Ubuntu-based distributions:**  
+## 运行
 ```bash
-sudo apt install python3-uinput steam-devices
+python3 mutterboard.py
 ```
 
-**For Fedora-based distributions:**  
-```bash
-sudo dnf install python3-uinput steam-devices
-```
-
-**For arch-based distributions:**  
-```bash
-yay -Syu python-uinput steam-devices
-```
-
-
-### **2. Download vboard**  
-Retrieve the latest version of `vboard.py` using `wget`:  
-```bash
-wget https://github.com/mdev588/vboard/releases/download/v1.21/vboard.py
-```
-
-
-
-### **3. Run**  
-
+兼容入口仍可用：
 ```bash
 python3 vboard.py
 ```
 
-### **4. Create shortcut (optional)**  
+## 配置
+配置文件：`~/.config/mutterboard/settings.conf`
 
-```bash
-mkdir -p ~/.local/share/applications/
-cat > ~/.local/share/applications/vboard.desktop <<EOF
-[Desktop Entry]
-Exec=bash -c 'python3 ~/vboard.py'
-Icon=preferences-desktop-keyboard
-Name=Vboard
-Terminal=false
-Type=Application
-Categories=Utility
-NoDisplay=false
-EOF
-```
-Make shortcut executable
-```
-chmod +x ~/.local/share/applications/vboard.desktop
-```
-Now you should find it in menu insdie Utility section
-
-### Usage
-When launched, vboard presents a compact keyboard with a minimal interface. The keyboard includes:
-- Standard QWERTY layout keys
-- Arrow keys
-- Modifier keys (Shift, Ctrl, Alt, Super)
-
-#### Interface Controls
-- ☰ (menu) - Toggle visibility of other interface controls
-- + - Increase opacity
-- - - Decrease opacity
-- **Background dropdown** - Change the keyboard background color
-
-### Configuration
-vboard saves its settings to ~/.config/vboard/settings.conf. This configuration file stores:
-- Background color
-- Opacity level
-- Text color
-You can manually edit this file or use the built-in interface controls to customize the appearance.
-
-### Customizing Keyboard Layout
-The keyboard layout is defined in the rows list in the source code. To modify the layout:
-1. Download the source code
-2. Locate the rows definition (around line 175)
-3. Modify the key arrangement as needed
-4. The format follows a nested list structure where each inner list represents a row of keys
-
-## Troubleshooting
-### 1. Error: 'no such device'
- Make sure uinput kernel module is loded with
-```bash
-sudo modprobe uinput
+示例：
+```ini
+[DEFAULT]
+theme = Dark
+opacity = 0.96
+font_size = 15
+capslock_on = false
+double_shift_shortcut = LEFTSHIFT,SPACE
 ```
 
-to make sure it auto load on boot create file with
-```bash
-echo 'uinput' | sudo tee /etc/modules-load.d/module-uinput.conf
-```
----
-### 2. Error: 'Permission Denied'
-Reload udev rules with
-```bash
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
----
-### 3. Error: 'steam-devices package not found'.
-- in Fedora make sure the RPM Fusion repository is enabled. You can follow the guide here:
-https://rpmfusion.org/Configuration
-- Others can follow steps in here https://github.com/mdev588/vboard/issues/8
-## Contributing 
-Contributions to vboard are welcome! Here are some ways you can help:
+`double_shift_shortcut` 可写任意逗号分隔组合，例如：
+- `LEFTCTRL,SPACE`
+- `LEFTALT,LEFTSHIFT,SPACE`
 
-- Add support for more keyboard layouts
-- Improve the UI
-- Fix bugs or implement new features
-- Improve documentation
+## 备注
+- 当前布局仍以 US QWERTY 为主。
+- 后续若要扩展 compositor 兼容范围，可以在此版本基础上继续推进。
 
-Please make sure to test your changes before submitting a pull request.
 
-## License
-vboard is licensed under the GNU Lesser General Public License v2.1. See LICENSE.md for the full license text.
+## 项目关系
+MutterBoard 现作为独立项目继续维护，不再作为 fork 网络中的延续分支。
 
-## Note
-
-* Currently only the QWERTY US layout is supported, so other layouts may cause some keys to produce different keystrokes. But this could easily be fixed by modifying the row list arrangement.
-
-* Currently do not work correctly on wlroots based window managers.
-
+特别感谢原始项目 **vboard** 提供的基础思路与早期实现。
