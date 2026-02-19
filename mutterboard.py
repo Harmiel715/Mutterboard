@@ -522,6 +522,14 @@ class MutterBoard(Gtk.Window):
         cr.fill()
         return False
 
+    def _draw_caps_indicator(self, area: Gtk.DrawingArea, cr) -> bool:
+        alloc = area.get_allocation()
+        radius = min(alloc.width, alloc.height) / 2
+        cr.set_source_rgba(0.28, 0.63, 1.0, 1.0)
+        cr.arc(alloc.width / 2, alloc.height / 2, radius, 0, 6.283185307179586)
+        cr.fill()
+        return False
+
     def on_button_press(self, widget: Gtk.Button, key_code: int) -> None:
         self.active_keys.add(key_code)
         self._paint_pressed(widget, True)
