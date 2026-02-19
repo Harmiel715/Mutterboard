@@ -24,17 +24,17 @@ Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key s
 - **Double-Shift shortcut trigger**
   - Double tapping Shift emits a configurable shortcut (default: `LEFTSHIFT,SPACE`).
 - **Fast sequential taps**
-  - When a second regular key is pressed before the first one is released, the previous key is force-released first to avoid dropped characters.
+  - Regular keys are emitted on press (tap-first strategy), so quick consecutive taps remain reliable even in single-pointer touch stacks (common with XWayland).
 - **Global top-layer window**
-  - Window is configured as dock + sticky + keep-above hints to reduce the chance of being covered by IME suggestion popups.
+  - Window keeps utility decorations (minimize/maximize/close) and repeatedly raises itself with sticky + keep-above hints to reduce IME overlap risk.
 - **Long-press repeat**
   - Regular keys repeat while held, after delay.
 - **Space cursor mode**
   - Long-press Space to enter cursor mode.
   - While active, the Space key switches to `◀ Space ▶` with a highlighted border/text style.
-  - Slide horizontally for Left/Right; slide vertically for Home/End navigation.
+  - Slide horizontally for Left/Right; slide vertically for Up/Down navigation.
 - **CapsLock synchronization**
-  - CapsLock status is synchronized from system keymap and shown as a blue top-right dot rendered by overlay drawing.
+  - CapsLock status is synchronized from system keymap and shown as a blue top-right dot rendered by overlay drawing (visibility toggled directly, no label text mutation).
 - **Dynamic key labels with Shift**
   - Symbol keys update labels while Shift is active (e.g. `1 -> !`).
 - **Customizable UI**
@@ -178,7 +178,7 @@ Settings notes:
 
 5. **Desktop/compositor compatibility differences**
 
-   Input injection behavior may vary depending on distro, desktop environment, and compositor implementation.
+   Input injection behavior may vary depending on distro, desktop environment, and compositor implementation. On XWayland in particular, multi-touch pointer semantics can differ from native Wayland, so gesture-style interactions may be interpreted as single-pointer sequences.
 
 ---
 
