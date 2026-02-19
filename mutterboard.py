@@ -223,6 +223,7 @@ class MutterBoard(Gtk.Window):
         self.repeat_states: Dict[int, RepeatState] = {}
         self.active_keys: Set[int] = set()
         self.space_button: Optional[Gtk.Button] = None
+        self.space_button_default_label = "Space"
         self.caps_dot: Optional[Gtk.Widget] = None
 
         self.space_long_press_ms = 300
@@ -260,6 +261,10 @@ class MutterBoard(Gtk.Window):
         self.set_border_width(0)
         self.set_resizable(True)
         self.set_keep_above(True)
+        self.stick()
+        self.set_type_hint(Gdk.WindowTypeHint.DOCK)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
         self.set_focus_on_map(False)
         self.set_can_focus(False)
         self.set_accept_focus(False)
@@ -331,6 +336,7 @@ class MutterBoard(Gtk.Window):
                 if key_code == uinput.KEY_SPACE:
                     # Space key also receives pointer motion for cursor mode / Space 键额外接收指针移动用于光标模式
                     self.space_button = button
+                    self.space_button_default_label = shown
                     button.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
                     button.connect("motion-notify-event", self.on_space_motion)
 
@@ -345,6 +351,7 @@ class MutterBoard(Gtk.Window):
                     dot.set_valign(Gtk.Align.START)
                     dot.set_margin_top(6)
                     dot.set_margin_end(6)
+                    dot.connect("draw", self._draw_caps_indicator)
                     dot.set_no_show_all(True)
                     overlay.add_overlay(dot)
                     self.caps_dot = dot
@@ -412,8 +419,8 @@ class MutterBoard(Gtk.Window):
         }}
         headerbar button {{
             background-image: none;
-            background-color: rgba({theme['key']}, 0.95);
-            border: 1px solid rgba({theme['key_border']}, 0.95);
+            background-color: rgba({theme['key']}, 0.72);
+            border: 1px solid rgba({theme['key_border']}, 0.88);
             min-height: 46px;
             min-width: 52px;
             border-radius: 8px;
@@ -422,12 +429,12 @@ class MutterBoard(Gtk.Window):
         headerbar .titlebutton {{
             min-width: 56px;
             min-height: 46px;
-            background-color: rgba({theme['key']}, 0.95);
+            background-color: rgba({theme['key']}, 0.72);
         }}
         #combobox button.combo {{
             background-image: none;
-            background-color: rgba({theme['key']}, 0.95);
-            border: 1px solid rgba({theme['key_border']}, 0.95);
+            background-color: rgba({theme['key']}, 0.72);
+            border: 1px solid rgba({theme['key_border']}, 0.88);
             min-height: 46px;
             min-width: 90px;
             border-radius: 8px;
@@ -442,7 +449,7 @@ class MutterBoard(Gtk.Window):
             border-radius: 8px;
             border: 1px solid rgba({theme['key_border']}, 0.9);
             background-image: none;
-            background-color: rgba({theme['key']}, 0.88);
+            background-color: rgba({theme['key']}, 0.56);
             min-height: 48px;
             margin: 0;
             padding: 0;
@@ -450,8 +457,16 @@ class MutterBoard(Gtk.Window):
         #key:hover {{ border-color: rgba({theme['accent']}, 1.0); }}
         #key label {{ color: {theme['text']}; font-weight: 600; font-size: {self.font_size}px; }}
         #key.pressed {{
-            background-color: rgba({theme['accent']}, 0.35);
+            background-color: rgba({theme['accent']}, 0.28);
             border-color: rgba({theme['accent']}, 1.0);
+        }}
+        #key.cursor-mode {{
+            background-color: rgba({theme['accent']}, 0.24);
+            border-color: rgba({theme['accent']}, 1.0);
+        }}
+        #key.cursor-mode label {{
+            color: rgba({theme['accent']}, 1.0);
+            font-weight: 700;
         }}
         #caps-dot {{
             background-color: rgba({theme['accent']}, 1.0);
@@ -494,6 +509,14 @@ class MutterBoard(Gtk.Window):
         else:
             self.caps_dot.hide()
 
+    def _draw_caps_indicator(self, area: Gtk.DrawingArea, cr) -> bool:
+        alloc = area.get_allocation()
+        radius = min(alloc.width, alloc.height) / 2
+        cr.set_source_rgba(0.28, 0.63, 1.0, 1.0)
+        cr.arc(alloc.width / 2, alloc.height / 2, radius, 0, 6.283185307179586)
+        cr.fill()
+        return False
+
     def on_button_press(self, widget: Gtk.Button, key_code: int) -> None:
         self.active_keys.add(key_code)
         self._paint_pressed(widget, True)
@@ -517,6 +540,8 @@ class MutterBoard(Gtk.Window):
             if state.pressed:
                 state.used_in_combo = True
 
+        # Allow fast two-key taps: release previous held regular key first.
+        self._release_active_regular_keys()
         self.engine.set_key_state(key_code, True)
         self._start_repeat(key_code)
 
@@ -678,6 +703,7 @@ class MutterBoard(Gtk.Window):
         # Long-press Space enters cursor mode, short tap sends space / 长按 Space 进入光标模式，短按发送空格
         self._cancel_space_long_press()
         self.space_cursor_mode = False
+        self._set_space_cursor_visual(False)
         self.space_accum_x = 0.0
         self.space_accum_y = 0.0
         self.space_last_motion_at = 0.0
@@ -687,6 +713,7 @@ class MutterBoard(Gtk.Window):
         moved = self.space_cursor_mode
         self._cancel_space_long_press()
         self.space_cursor_mode = False
+        self._set_space_cursor_visual(False)
         self.space_accum_x = 0.0
         self.space_accum_y = 0.0
         self.space_last_motion_at = 0.0
@@ -702,7 +729,28 @@ class MutterBoard(Gtk.Window):
         if uinput.KEY_SPACE not in self.active_keys:
             return False
         self.space_cursor_mode = True
+        self._set_space_cursor_visual(True)
         return False
+
+    def _set_space_cursor_visual(self, active: bool) -> None:
+        if self.space_button is None:
+            return
+        style = self.space_button.get_style_context()
+        if active:
+            self.space_button.set_label("◀ Space ▶")
+            style.add_class("cursor-mode")
+        else:
+            self.space_button.set_label(self.space_button_default_label)
+            style.remove_class("cursor-mode")
+
+    def _release_active_regular_keys(self) -> None:
+        held_regular = [
+            key for key in self.active_keys if key not in MODIFIER_KEYS and key not in {uinput.KEY_SPACE, uinput.KEY_CAPSLOCK}
+        ]
+        for key_code in held_regular:
+            self._cancel_repeat(key_code)
+            self.engine.set_key_state(key_code, False)
+            self.active_keys.discard(key_code)
 
     def on_space_motion(self, _widget: Gtk.Button, event: Gdk.EventMotion) -> bool:
         if uinput.KEY_SPACE not in self.active_keys:
