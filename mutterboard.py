@@ -316,6 +316,9 @@ class MutterBoard(Gtk.Window):
         # Always-visible CapsLock indicator in header; not part of collapsible controls.
         self.caps_indicator_label = Gtk.Label(label="Caps: Off")
         self.caps_indicator_label.set_name("caps-indicator")
+        self.caps_indicator_label.set_halign(Gtk.Align.END)
+        self.caps_indicator_label.set_valign(Gtk.Align.CENTER)
+        self.caps_indicator_label.set_hexpand(False)
         self.header.pack_end(self.caps_indicator_label)
 
     def _build_keyboard(self, parent: Gtk.Box) -> None:
@@ -479,10 +482,12 @@ class MutterBoard(Gtk.Window):
         }}
         .key-button label {{ color: {theme['text']}; font-weight: 600; font-size: {self.font_size}px; }}
         #caps-indicator {{
+            background: transparent;
             color: {theme['text']};
             font-size: {max(self.font_size - 2, 11)}px;
             font-weight: 700;
             padding: 0 8px;
+            margin: 0;
         }}
         #caps-indicator.on {{ color: rgba({theme['accent']}, 1.0); }}
         .key-button.pressed,
@@ -543,9 +548,12 @@ class MutterBoard(Gtk.Window):
 
         if key_code == uinput.KEY_CAPSLOCK:
             self._flash_regular_key(widget)
+            # Optimistically flip local state for immediate visual response.
+            self.capslock_on = not self.capslock_on
+            self._update_caps_indicator()
             self.engine.tap_key(uinput.KEY_CAPSLOCK)
             # Poll keymap state for a short period to avoid transient indicator flicker.
-            self._schedule_capslock_sync(self.capslock_on)
+            self._schedule_capslock_sync(not self.capslock_on)
             return
 
         if key_code in MODIFIER_KEYS:
