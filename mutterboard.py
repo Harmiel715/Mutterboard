@@ -225,6 +225,7 @@ class MutterBoard(Gtk.Window):
         self.space_button: Optional[Gtk.Button] = None
         self.space_button_default_label = "Space"
         self.caps_indicator_label: Optional[Gtk.Label] = None
+        self.caps_sync_source: Optional[int] = None
 
         self.space_long_press_ms = 300
         self.space_cursor_mode = False
@@ -339,6 +340,8 @@ class MutterBoard(Gtk.Window):
                 button = Gtk.Button(label=shown)
                 button.set_name("key")
                 button.get_style_context().add_class("key-button")
+                button.set_can_focus(False)
+                button.set_focus_on_click(False)
                 button.connect("pressed", self.on_button_press, key_code)
                 button.connect("released", self.on_button_release, key_code)
 
@@ -381,6 +384,23 @@ class MutterBoard(Gtk.Window):
         self.capslock_on = self.keymap.get_caps_lock_state()
         self._update_caps_indicator()
         return False
+
+    def _schedule_capslock_sync(self, expected_previous: bool) -> None:
+        if self.caps_sync_source is not None:
+            GLib.source_remove(self.caps_sync_source)
+            self.caps_sync_source = None
+
+        attempts = {"count": 0}
+
+        def _poll() -> bool:
+            self._sync_capslock_from_system()
+            attempts["count"] += 1
+            if self.capslock_on != expected_previous or attempts["count"] >= 12:
+                self.caps_sync_source = None
+                return False
+            return True
+
+        self.caps_sync_source = GLib.timeout_add(60, _poll)
 
     def _create_header_button(self, label: str, callback=None, callback_arg=None) -> Gtk.Button:
         button = Gtk.Button(label=label)
@@ -437,16 +457,22 @@ class MutterBoard(Gtk.Window):
         }}
         #grid {{ margin: 0; padding: 0; }}
         .key-button,
+        button.key-button,
         .key-button:hover,
+        button.key-button:hover,
         .key-button:focus,
+        button.key-button:focus,
         .key-button:checked,
+        button.key-button:checked,
         .key-button:active,
+        button.key-button:active,
         .key-button:backdrop {{
             border-radius: 8px;
             border: 1px solid rgba({theme['key_border']}, 0.9);
             background-image: none;
-            background-color: rgba({theme['key']}, 0.48);
+            background-color: rgba({theme['key']}, 0.82);
             box-shadow: none;
+            outline: none;
             min-height: 48px;
             margin: 0;
             padding: 0;
@@ -518,10 +544,8 @@ class MutterBoard(Gtk.Window):
         if key_code == uinput.KEY_CAPSLOCK:
             self._flash_regular_key(widget)
             self.engine.tap_key(uinput.KEY_CAPSLOCK)
-            # Update immediately so header indicator responds even if keymap state signal lags.
-            self.capslock_on = not self.capslock_on
-            self._update_caps_indicator()
-            GLib.timeout_add(35, self._sync_capslock_from_system)
+            # Poll keymap state for a short period to avoid transient indicator flicker.
+            self._schedule_capslock_sync(self.capslock_on)
             return
 
         if key_code in MODIFIER_KEYS:
