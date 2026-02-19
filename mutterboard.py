@@ -218,6 +218,7 @@ class MutterBoard(Gtk.Window):
         self.repeat_states: Dict[int, RepeatState] = {}
         self.active_keys: Set[int] = set()
         self.space_button: Optional[Gtk.Button] = None
+        self.caps_dot: Optional[Gtk.Widget] = None
 
         self.space_long_press_ms = 300
         self.space_cursor_mode = False
@@ -241,7 +242,8 @@ class MutterBoard(Gtk.Window):
 
         self._load_settings()
         self._build_ui()
-        self._update_caps_indicator()
+        self._setup_capslock_sync()
+        self._sync_capslock_from_system()
         self.apply_css()
 
         self.connect("configure-event", self.on_resize)
@@ -283,8 +285,6 @@ class MutterBoard(Gtk.Window):
         self._create_header_button("A+", self.change_font_size, 1)
         self._create_header_button("A-", self.change_font_size, -1)
         self.font_btn = self._create_header_button(f"{self.font_size}px")
-        self.caps_btn = self._create_header_button("Caps: Off")
-        self.caps_btn.set_sensitive(False)
 
         self.theme_combobox = Gtk.ComboBoxText()
         self.theme_combobox.append_text("Theme")
@@ -325,7 +325,23 @@ class MutterBoard(Gtk.Window):
                     button.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
                     button.connect("motion-notify-event", self.on_space_motion)
 
-                grid.attach(button, col, row_index, width, 1)
+                attach_widget: Gtk.Widget = button
+                if key_code == uinput.KEY_CAPSLOCK:
+                    overlay = Gtk.Overlay()
+                    overlay.add(button)
+                    dot = Gtk.DrawingArea()
+                    dot.set_name("caps-dot")
+                    dot.set_size_request(10, 10)
+                    dot.set_halign(Gtk.Align.END)
+                    dot.set_valign(Gtk.Align.START)
+                    dot.set_margin_top(6)
+                    dot.set_margin_end(6)
+                    dot.set_no_show_all(True)
+                    overlay.add_overlay(dot)
+                    self.caps_dot = dot
+                    attach_widget = overlay
+
+                grid.attach(attach_widget, col, row_index, width, 1)
                 col += width
 
                 if key_code in MODIFIER_KEYS:
@@ -342,6 +358,21 @@ class MutterBoard(Gtk.Window):
             idx += 1
             deficit -= 1
         return widths
+
+    def _setup_capslock_sync(self) -> None:
+        self.keymap = Gdk.Keymap.get_default()
+        if self.keymap is not None:
+            self.keymap.connect("state-changed", self._on_keymap_state_changed)
+
+    def _on_keymap_state_changed(self, _keymap: Gdk.Keymap) -> None:
+        self._sync_capslock_from_system()
+
+    def _sync_capslock_from_system(self) -> bool:
+        if getattr(self, "keymap", None) is None:
+            return False
+        self.capslock_on = self.keymap.get_caps_lock_state()
+        self._update_caps_indicator()
+        return False
 
     def _create_header_button(self, label: str, callback=None, callback_arg=None) -> Gtk.Button:
         button = Gtk.Button(label=label)
@@ -413,9 +444,11 @@ class MutterBoard(Gtk.Window):
             background-color: rgba({theme['accent']}, 0.35);
             border-color: rgba({theme['accent']}, 1.0);
         }}
-        #headbar-button.caps-on label {{
-            color: rgba({theme['accent']}, 1.0);
-            font-weight: 700;
+        #caps-dot {{
+            background-color: rgba({theme['accent']}, 1.0);
+            border-radius: 999px;
+            min-width: 10px;
+            min-height: 10px;
         }}
         """
         provider.load_from_data(css.encode("utf-8"))
@@ -423,7 +456,7 @@ class MutterBoard(Gtk.Window):
 
     def toggle_controls(self, _button=None) -> None:
         for button in self.settings_buttons:
-            if button.get_label() not in {"☰", "Caps: On", "Caps: Off"}:
+            if button.get_label() != "☰":
                 button.set_visible(not button.get_visible())
         self.theme_combobox.set_visible(not self.theme_combobox.get_visible())
 
@@ -445,21 +478,21 @@ class MutterBoard(Gtk.Window):
             self.apply_css()
 
     def _update_caps_indicator(self) -> None:
-        self.caps_btn.set_label("Caps: On" if self.capslock_on else "Caps: Off")
-        style = self.caps_btn.get_style_context()
+        if self.caps_dot is None:
+            return
         if self.capslock_on:
-            style.add_class("caps-on")
+            self.caps_dot.show()
         else:
-            style.remove_class("caps-on")
+            self.caps_dot.hide()
 
     def on_button_press(self, widget: Gtk.Button, key_code: int) -> None:
         self.active_keys.add(key_code)
         self._paint_pressed(widget, True)
 
         if key_code == uinput.KEY_CAPSLOCK:
-            self.capslock_on = not self.capslock_on
             self.engine.tap_key(uinput.KEY_CAPSLOCK)
-            self._update_caps_indicator()
+            self._sync_capslock_from_system()
+            GLib.timeout_add(35, self._sync_capslock_from_system)
             return
 
         if key_code in MODIFIER_KEYS:
@@ -739,7 +772,6 @@ class MutterBoard(Gtk.Window):
             self.theme_name = self.config.get("DEFAULT", "theme", fallback=self.theme_name)
             self.opacity = self.config.get("DEFAULT", "opacity", fallback=self.opacity)
             self.font_size = self.config.getint("DEFAULT", "font_size", fallback=self.font_size)
-            self.capslock_on = self.config.getboolean("DEFAULT", "capslock_on", fallback=self.capslock_on)
             self.width = self.config.getint("DEFAULT", "width", fallback=0)
             self.height = self.config.getint("DEFAULT", "height", fallback=0)
             shortcut = self.config.get("DEFAULT", "double_shift_shortcut", fallback="LEFTSHIFT,SPACE")
@@ -759,7 +791,6 @@ class MutterBoard(Gtk.Window):
             "theme": self.theme_name,
             "opacity": self.opacity,
             "font_size": str(self.font_size),
-            "capslock_on": str(self.capslock_on),
             "width": str(self.width),
             "height": str(self.height),
             "double_shift_shortcut": self._shortcut_to_config(self.double_shift_shortcut),
