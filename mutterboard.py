@@ -103,13 +103,14 @@ DEFAULT_LAYOUT = [
 ]
 
 KEY_WIDTHS = {
+    "`": 1,
     "Space": 12,
     "CapsLock": 3,
     "Shift_L": 4,
     "Shift_R": 4,
-    "Backspace": 5,
-    "\\": 4,
-    "Enter": 5,
+    "Backspace": 3,
+    "\\": 3,
+    "Enter": 4,
 }
 
 SYMBOL_LABELS = {
@@ -222,7 +223,7 @@ class MutterBoard(Gtk.Window):
 
         self.theme_name = "Dark"
         self.opacity = "0.96"
-        self.font_size = 15
+        self.font_size = 18
         self.width = 0
         self.height = 0
 
@@ -333,32 +334,55 @@ class MutterBoard(Gtk.Window):
         css = f"""
         #toplevel {{ background-color: rgba({theme['bg']}, {self.opacity}); }}
         #root {{ background-color: rgba({theme['bg']}, {self.opacity}); margin: 0; padding: 0; }}
-        headerbar {{
+        headerbar {
             background-color: rgba({theme['bg']}, {self.opacity});
             border: 0;
             box-shadow: none;
-            min-height: 42px;
-        }}
-        headerbar button label, #combobox button.combo label {{
+            min-height: 54px;
+        }
+        headerbar button {
+            background-image: none;
+            background-color: rgba({theme['key']}, 0.95);
+            border: 1px solid rgba({theme['key_border']}, 0.95);
+            min-height: 46px;
+            min-width: 52px;
+            border-radius: 8px;
+        }
+        headerbar button:hover { border-color: rgba({theme['accent']}, 1.0); }
+        headerbar .titlebutton {
+            min-width: 56px;
+            min-height: 46px;
+            background-color: rgba({theme['key']}, 0.95);
+        }
+        #combobox button.combo {
+            background-image: none;
+            background-color: rgba({theme['key']}, 0.95);
+            border: 1px solid rgba({theme['key_border']}, 0.95);
+            min-height: 46px;
+            min-width: 90px;
+            border-radius: 8px;
+        }
+        headerbar button label, #combobox button.combo label {
             color: {theme['text']};
-            font-size: {max(self.font_size - 2, 10)}px;
-        }}
-        #grid {{ margin: 0; padding: 0; }}
-        #key {{
+            font-size: {max(self.font_size - 1, 12)}px;
+            font-weight: 600;
+        }
+        #grid { margin: 0; padding: 0; }
+        #key {
             border-radius: 8px;
             border: 1px solid rgba({theme['key_border']}, 0.9);
             background-image: none;
             background-color: rgba({theme['key']}, 0.88);
-            min-height: 42px;
+            min-height: 48px;
             margin: 0;
             padding: 0;
-        }}
-        #key:hover {{ border-color: rgba({theme['accent']}, 1.0); }}
-        #key label {{ color: {theme['text']}; font-weight: 600; font-size: {self.font_size}px; }}
-        #key.pressed {{
+        }
+        #key:hover { border-color: rgba({theme['accent']}, 1.0); }
+        #key label { color: {theme['text']}; font-weight: 600; font-size: {self.font_size}px; }
+        #key.pressed {
             background-color: rgba({theme['accent']}, 0.35);
             border-color: rgba({theme['accent']}, 1.0);
-        }}
+        }
         #headbar-button.caps-on label {{
             color: rgba({theme['accent']}, 1.0);
             font-weight: 700;
@@ -369,7 +393,7 @@ class MutterBoard(Gtk.Window):
 
     def toggle_controls(self, _button=None) -> None:
         for button in self.settings_buttons:
-            if button.get_label() != "☰":
+            if button.get_label() not in {"☰", "Caps: On", "Caps: Off"}:
                 button.set_visible(not button.get_visible())
         self.theme_combobox.set_visible(not self.theme_combobox.get_visible())
 
@@ -380,7 +404,7 @@ class MutterBoard(Gtk.Window):
         self.apply_css()
 
     def change_font_size(self, _button, delta: int) -> None:
-        self.font_size = min(24, max(10, self.font_size + delta))
+        self.font_size = min(48, max(10, self.font_size + delta * 2))
         self.font_btn.set_label(f"{self.font_size}px")
         self.apply_css()
 
@@ -609,7 +633,7 @@ class MutterBoard(Gtk.Window):
         except configparser.Error:
             return
 
-        self.font_size = min(24, max(10, self.font_size))
+        self.font_size = min(48, max(10, self.font_size))
         if self.width > 0 and self.height > 0:
             self.set_default_size(self.width, self.height)
 
