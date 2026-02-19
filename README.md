@@ -10,7 +10,7 @@ An on-screen keyboard for Linux that aims to mimic physical keyboard behavior as
 
 MutterBoard is a GTK3 virtual keyboard that injects real key events through `uinput`. It is designed for touch devices, temporary keyboard replacement, and accessibility-oriented desktop workflows.
 
-Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key semantics**, **shortcut usability**, and **state synchronization** (for example CapsLock indicator sync).
+Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key semantics**, **shortcut usability**, and **state synchronization** (e.g., CapsLock indicator).
 
 ---
 
@@ -18,37 +18,40 @@ Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key s
 
 - **Hardware-like modifier behavior**
   - Supports Shift/Ctrl/Alt/Super press/release handling.
-  - Supports one-shot/latch behavior for modifiers.
+  - Supports one-shot/latch behavior for modifiers (e.g., tap Shift once to lock it).
 - **Shortcut friendly**
-  - Combination keys can be sent to the focused window (e.g. `Ctrl+C`, `Ctrl+V`).
+  - Combination keys can be sent to the focused window (e.g., `Ctrl+C`, `Ctrl+V`).
 - **Double-Shift shortcut trigger**
-  - Double tapping Shift emits a configurable shortcut (default: `LEFTSHIFT,SPACE`).
+  - Double tapping either Shift key emits a configurable shortcut (default: `LEFTSHIFT,SPACE`). Can be enabled/disabled via config.
 - **Fast sequential taps**
-  - When a second regular key is pressed before the first one is released, the previous key is force-released first to avoid dropped characters.
+  - Regular keys are emitted on press (tap-first strategy), so quick consecutive taps remain reliable even in single-pointer touch stacks (common with XWayland).
 - **Global top-layer window**
-  - Window is configured as dock + sticky + keep-above hints to reduce the chance of being covered by IME suggestion popups.
+  - Window keeps utility decorations (minimize/maximize/close) and repeatedly raises itself with sticky + keep-above hints to reduce IME overlap risk.
 - **Long-press repeat**
-  - Regular keys repeat while held, after delay.
+  - Regular keys repeat while held, after a delay.
 - **Space cursor mode**
   - Long-press Space to enter cursor mode.
-  - While active, the Space key switches to `◀ Space ▶` with a highlighted border/text style.
-  - Slide horizontally for Left/Right; slide vertically for Home/End navigation.
-- **CapsLock synchronization**
-  - CapsLock status is synchronized from system keymap and shown as a blue top-right dot rendered by overlay drawing.
+  - While active, the Space key label switches to `◀ Space ▶` with a highlighted border and text.
+  - Slide horizontally to send Left/Right; slide vertically to send Up/Down.
+- **CapsLock handling**
+  - CapsLock key toggles internal state, sends the key event, and updates the header indicator.
+  - Header indicator is a button‑style label matching other controls; it turns accent‑colored when CapsLock is on.
+  - CapsLock state is saved and restored on next launch.
 - **Dynamic key labels with Shift**
-  - Symbol keys update labels while Shift is active (e.g. `1 -> !`).
+  - Symbol keys update labels while Shift is active (e.g., `1` → `!`).
 - **Customizable UI**
   - Themes: `Dark`, `Light`, `Midnight`
-  - Reduced key alpha for better readability of background text/windows when using translucent themes.
+  - Reduced key opacity for better readability of background content when using translucent themes.
+  - Hover/prelight does not alter key background opacity; only click feedback and latched states change visuals.
   - Adjustable opacity and font size from header controls.
 - **Persistent settings**
-  - Saves theme, opacity, font size, window width/height, and double-shift shortcut.
+  - Saves theme, opacity, font size, window size, double‑Shift shortcut, and CapsLock state.
 
 ---
 
 ## Screenshots
 
-<img width="2414" height="849" alt="图片" src="https://github.com/user-attachments/assets/45d70608-855d-4919-b325-4c95ecbaeb11" />
+<img width="2414" height="849" alt="MutterBoard screenshot" src="https://github.com/user-attachments/assets/45d70608-855d-4919-b325-4c95ecbaeb11" />
 
 ---
 
@@ -63,7 +66,7 @@ Required runtime components:
 
 Optional but useful on some distros:
 
-- `steam-devices` (helps input-device permissions in some environments)
+- `steam-devices` (helps input‑device permissions in some environments)
 
 ---
 
@@ -99,7 +102,7 @@ python3 mutterboard.py
 
 ```bash
 mkdir -p ~/.local/share/applications/
-cat > ~/.local/share/applications/mutterboard.desktop <<EOF2
+cat > ~/.local/share/applications/mutterboard.desktop <<EOF
 [Desktop Entry]
 Exec=bash -c 'python3 /path/to/mutterboard.py'
 Icon=preferences-desktop-keyboard
@@ -108,7 +111,7 @@ Terminal=false
 Type=Application
 Categories=Utility;
 NoDisplay=false
-EOF2
+EOF
 chmod +x ~/.local/share/applications/mutterboard.desktop
 ```
 
@@ -133,6 +136,7 @@ width = 0
 height = 0
 double_shift_shortcut_enabled = true
 double_shift_shortcut = LEFTSHIFT,SPACE
+capslock_on = false
 ```
 
 Settings notes:
@@ -141,8 +145,9 @@ Settings notes:
 - `opacity`: clamped by app (about `0.35` to `1.0`)
 - `font_size`: clamped by app (about `10` to `48`)
 - `width` / `height`: persisted window size
-- `double_shift_shortcut_enabled`: enable/disable double-Shift shortcut trigger (`true` by default)
-- `double_shift_shortcut`: comma-separated key tokens (e.g. `LEFTSHIFT,SPACE`)
+- `double_shift_shortcut_enabled`: enable/disable double‑Shift shortcut (`true` by default)
+- `double_shift_shortcut`: comma‑separated key tokens (e.g., `LEFTSHIFT,SPACE`)
+- `capslock_on`: internal CapsLock state (saved automatically)
 
 ---
 
@@ -166,7 +171,7 @@ Settings notes:
 
 3. **Permission denied for key injection**
 
-   Reload udev rules and re-login:
+   Reload udev rules and re‑log in:
 
    ```bash
    sudo udevadm control --reload-rules && sudo udevadm trigger
@@ -178,7 +183,7 @@ Settings notes:
 
 5. **Desktop/compositor compatibility differences**
 
-   Input injection behavior may vary depending on distro, desktop environment, and compositor implementation.
+   Input injection behavior may vary depending on distro, desktop environment, and compositor implementation. On XWayland in particular, multi‑touch pointer semantics can differ from native Wayland, so gesture‑style interactions may be interpreted as single‑pointer sequences.
 
 ---
 
@@ -198,3 +203,4 @@ Before opening a PR, please:
 ## License
 
 This project is licensed under **GNU LGPL v2.1**. See [LICENSE](./LICENSE).
+```
