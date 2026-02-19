@@ -23,17 +23,23 @@ Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key s
   - Combination keys can be sent to the focused window (e.g. `Ctrl+C`, `Ctrl+V`).
 - **Double-Shift shortcut trigger**
   - Double tapping Shift emits a configurable shortcut (default: `LEFTSHIFT,SPACE`).
+- **Fast sequential taps**
+  - When a second regular key is pressed before the first one is released, the previous key is force-released first to avoid dropped characters.
+- **Global top-layer window**
+  - Window is configured as dock + sticky + keep-above hints to reduce the chance of being covered by IME suggestion popups.
 - **Long-press repeat**
   - Regular keys repeat while held, after delay.
 - **Space cursor mode**
   - Long-press Space to enter cursor mode.
+  - While active, the Space key switches to `◀ Space ▶` with a highlighted border/text style.
   - Slide horizontally for Left/Right; slide vertically for Home/End navigation.
 - **CapsLock synchronization**
-  - CapsLock status is synchronized from system keymap and shown with an indicator dot.
+  - CapsLock status is synchronized from system keymap and shown as a blue top-right dot rendered by overlay drawing.
 - **Dynamic key labels with Shift**
   - Symbol keys update labels while Shift is active (e.g. `1 -> !`).
 - **Customizable UI**
   - Themes: `Dark`, `Light`, `Midnight`
+  - Reduced key alpha for better readability of background text/windows when using translucent themes.
   - Adjustable opacity and font size from header controls.
 - **Persistent settings**
   - Saves theme, opacity, font size, window width/height, and double-shift shortcut.
