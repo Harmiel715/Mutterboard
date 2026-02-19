@@ -1,5 +1,7 @@
 import configparser
 import os
+import re
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
@@ -225,7 +227,9 @@ class MutterBoard(Gtk.Window):
         self.space_button: Optional[Gtk.Button] = None
         self.space_button_default_label = "Space"
         self.caps_indicator_label: Optional[Gtk.Label] = None
-        self.caps_sync_source: Optional[int] = None
+        self.caps_probe_source: Optional[int] = None
+        self.caps_monitor_source: Optional[int] = None
+        self.caps_state_stable_reads = 0
 
         self.space_long_press_ms = 300
         self.space_cursor_mode = False
@@ -293,7 +297,10 @@ class MutterBoard(Gtk.Window):
         self.header.set_decoration_layout(":minimize,maximize,close")
         self.set_titlebar(self.header)
 
-        self.settings_buttons: List[Gtk.Button] = []
+        self.settings_buttons: List[Gtk.Widget] = []
+        self.header_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self.header.pack_start(self.header_controls)
+
         self._create_header_button("☰", self.toggle_controls)
         self._create_header_button("+", self.change_opacity, True)
         self._create_header_button("-", self.change_opacity, False)
@@ -301,6 +308,14 @@ class MutterBoard(Gtk.Window):
         self._create_header_button("A+", self.change_font_size, 1)
         self._create_header_button("A-", self.change_font_size, -1)
         self.font_btn = self._create_header_button(f"{self.font_size}px")
+
+        # Always-visible CapsLock indicator next to menu controls.
+        self.caps_indicator_label = Gtk.Label(label="Caps: Off")
+        self.caps_indicator_label.set_name("caps-indicator")
+        self.caps_indicator_label.set_halign(Gtk.Align.START)
+        self.caps_indicator_label.set_valign(Gtk.Align.CENTER)
+        self.caps_indicator_label.set_hexpand(False)
+        self.header_controls.pack_start(self.caps_indicator_label, False, False, 0)
 
         self.theme_combobox = Gtk.ComboBoxText()
         self.theme_combobox.append_text("Theme")
@@ -311,15 +326,7 @@ class MutterBoard(Gtk.Window):
             self.theme_combobox.set_active(list(THEMES.keys()).index(self.theme_name) + 1)
         self.theme_combobox.set_name("combobox")
         self.theme_combobox.connect("changed", self.change_theme)
-        self.header.add(self.theme_combobox)
-
-        # Always-visible CapsLock indicator in header; not part of collapsible controls.
-        self.caps_indicator_label = Gtk.Label(label="Caps: Off")
-        self.caps_indicator_label.set_name("caps-indicator")
-        self.caps_indicator_label.set_halign(Gtk.Align.END)
-        self.caps_indicator_label.set_valign(Gtk.Align.CENTER)
-        self.caps_indicator_label.set_hexpand(False)
-        self.header.pack_end(self.caps_indicator_label)
+        self.header_controls.pack_start(self.theme_combobox, False, False, 0)
 
     def _build_keyboard(self, parent: Gtk.Box) -> None:
         grid = Gtk.Grid()
@@ -377,33 +384,92 @@ class MutterBoard(Gtk.Window):
         self.keymap = Gdk.Keymap.get_default()
         if self.keymap is not None:
             self.keymap.connect("state-changed", self._on_keymap_state_changed)
+        self.connect("focus-in-event", self._on_window_focus_changed)
+        self.connect("window-state-event", self._on_window_state_changed)
+        self.caps_monitor_source = GLib.timeout_add(220, self._monitor_capslock_state)
 
     def _on_keymap_state_changed(self, _keymap: Gdk.Keymap) -> None:
         self._sync_capslock_from_system()
 
+    def _on_window_focus_changed(self, *_args) -> bool:
+        self._schedule_capslock_probe()
+        return False
+
+    def _on_window_state_changed(self, *_args) -> bool:
+        self._schedule_capslock_probe()
+        return False
+
+    def _monitor_capslock_state(self) -> bool:
+        self._sync_capslock_from_system()
+        return True
+
+    def _read_capslock_from_xset(self) -> Optional[bool]:
+        try:
+            result = subprocess.run(
+                ["xset", "q"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=0.35,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+        if result.returncode != 0:
+            return None
+
+        match = re.search(r"Caps Lock:\s+(on|off)", result.stdout, flags=re.IGNORECASE)
+        if match is None:
+            return None
+        return match.group(1).lower() == "on"
+
+    def _read_capslock_state(self) -> bool:
+        keymap_state = self.keymap.get_caps_lock_state() if getattr(self, "keymap", None) else None
+        xset_state = self._read_capslock_from_xset()
+
+        if xset_state is not None:
+            return xset_state
+        if keymap_state is not None:
+            return keymap_state
+        return self.capslock_on
+
     def _sync_capslock_from_system(self) -> bool:
-        if getattr(self, "keymap", None) is None:
-            return False
-        self.capslock_on = self.keymap.get_caps_lock_state()
+        current = self._read_capslock_state()
+        if current == self.capslock_on:
+            self.caps_state_stable_reads += 1
+        else:
+            self.caps_state_stable_reads = 0
+
+        self.capslock_on = current
         self._update_caps_indicator()
         return False
 
-    def _schedule_capslock_sync(self, expected_previous: bool) -> None:
-        if self.caps_sync_source is not None:
-            GLib.source_remove(self.caps_sync_source)
-            self.caps_sync_source = None
+    def _schedule_capslock_probe(self) -> None:
+        if self.caps_probe_source is not None:
+            GLib.source_remove(self.caps_probe_source)
+            self.caps_probe_source = None
 
-        attempts = {"count": 0}
+        attempts = {"count": 0, "stable": 0, "last": None}
 
         def _poll() -> bool:
-            self._sync_capslock_from_system()
+            current = self._read_capslock_state()
             attempts["count"] += 1
-            if self.capslock_on != expected_previous or attempts["count"] >= 12:
-                self.caps_sync_source = None
+
+            if current == attempts["last"]:
+                attempts["stable"] += 1
+            else:
+                attempts["stable"] = 0
+                attempts["last"] = current
+
+            self.capslock_on = current
+            self._update_caps_indicator()
+
+            if attempts["stable"] >= 3 or attempts["count"] >= 24:
+                self.caps_probe_source = None
                 return False
             return True
 
-        self.caps_sync_source = GLib.timeout_add(60, _poll)
+        self.caps_probe_source = GLib.timeout_add(40, _poll)
 
     def _create_header_button(self, label: str, callback=None, callback_arg=None) -> Gtk.Button:
         button = Gtk.Button(label=label)
@@ -413,7 +479,7 @@ class MutterBoard(Gtk.Window):
                 button.connect("clicked", callback)
             else:
                 button.connect("clicked", callback, callback_arg)
-        self.header.add(button)
+        self.header_controls.pack_start(button, False, False, 0)
         self.settings_buttons.append(button)
         return button
 
@@ -422,20 +488,21 @@ class MutterBoard(Gtk.Window):
 
     def apply_css(self) -> None:
         theme = self._theme()
+        self.set_opacity(float(self.opacity))
         provider = Gtk.CssProvider()
         css = f"""
-        #toplevel {{ background-color: rgba({theme['bg']}, {self.opacity}); }}
-        #root {{ background-color: rgba({theme['bg']}, {self.opacity}); margin: 0; padding: 0; }}
+        #toplevel {{ background-color: rgb({theme['bg']}); }}
+        #root {{ background-color: rgb({theme['bg']}); margin: 0; padding: 0; }}
         headerbar {{
-            background-color: rgba({theme['bg']}, {self.opacity});
+            background-color: rgb({theme['bg']});
             border: 0;
             box-shadow: none;
             min-height: 54px;
         }}
         headerbar button {{
             background-image: none;
-            background-color: rgba({theme['key']}, 0.72);
-            border: 1px solid rgba({theme['key_border']}, 0.88);
+            background-color: rgb({theme['key']});
+            border: 1px solid rgb({theme['key_border']});
             min-height: 46px;
             min-width: 52px;
             border-radius: 8px;
@@ -443,12 +510,12 @@ class MutterBoard(Gtk.Window):
         headerbar .titlebutton {{
             min-width: 56px;
             min-height: 46px;
-            background-color: rgba({theme['key']}, 0.72);
+            background-color: rgb({theme['key']});
         }}
         #combobox button.combo {{
             background-image: none;
-            background-color: rgba({theme['key']}, 0.72);
-            border: 1px solid rgba({theme['key_border']}, 0.88);
+            background-color: rgb({theme['key']});
+            border: 1px solid rgb({theme['key_border']});
             min-height: 46px;
             min-width: 90px;
             border-radius: 8px;
@@ -471,9 +538,9 @@ class MutterBoard(Gtk.Window):
         button.key-button:active,
         .key-button:backdrop {{
             border-radius: 8px;
-            border: 1px solid rgba({theme['key_border']}, 0.9);
+            border: 1px solid rgb({theme['key_border']});
             background-image: none;
-            background-color: rgba({theme['key']}, 0.82);
+            background-color: rgb({theme['key']});
             box-shadow: none;
             outline: none;
             min-height: 48px;
@@ -510,9 +577,8 @@ class MutterBoard(Gtk.Window):
         Gtk.StyleContext.add_provider_for_screen(self.get_screen(), provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
 
     def toggle_controls(self, _button=None) -> None:
-        for button in self.settings_buttons:
-            if button.get_label() != "☰":
-                button.set_visible(not button.get_visible())
+        for button in self.settings_buttons[1:]:
+            button.set_visible(not button.get_visible())
         self.theme_combobox.set_visible(not self.theme_combobox.get_visible())
 
     def change_opacity(self, _button, increase: bool) -> None:
@@ -548,12 +614,9 @@ class MutterBoard(Gtk.Window):
 
         if key_code == uinput.KEY_CAPSLOCK:
             self._flash_regular_key(widget)
-            # Optimistically flip local state for immediate visual response.
-            self.capslock_on = not self.capslock_on
-            self._update_caps_indicator()
             self.engine.tap_key(uinput.KEY_CAPSLOCK)
-            # Poll keymap state for a short period to avoid transient indicator flicker.
-            self._schedule_capslock_sync(not self.capslock_on)
+            # Re-probe state after injecting key to support mixed soft/hardware usage.
+            self._schedule_capslock_probe()
             return
 
         if key_code in MODIFIER_KEYS:
@@ -901,6 +964,13 @@ class MutterBoard(Gtk.Window):
         self.width, self.height = self.get_size()
 
     def save_settings(self) -> None:
+        if self.caps_probe_source is not None:
+            GLib.source_remove(self.caps_probe_source)
+            self.caps_probe_source = None
+        if self.caps_monitor_source is not None:
+            GLib.source_remove(self.caps_monitor_source)
+            self.caps_monitor_source = None
+
         self.config["DEFAULT"] = {
             "theme": self.theme_name,
             "opacity": self.opacity,
