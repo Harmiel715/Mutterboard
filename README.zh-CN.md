@@ -1,4 +1,4 @@
-# MutterBoard
+# QingBoard
 
 一个面向 Linux 的屏幕键盘项目，目标是尽可能贴近实体键盘行为。
 
@@ -8,9 +8,9 @@
 
 ## 简介
 
-MutterBoard 使用 GTK3 构建界面，通过 `uinput` 注入真实按键事件，适用于触摸设备、临时替代物理键盘、以及无障碍输入等桌面场景。
+QingBoard 使用 GTK3 构建界面，通过 `uinput` 注入真实按键事件，适用于触摸设备、临时替代物理键盘、以及无障碍输入等桌面场景。
 
-相比只做“按钮点击”的简化屏幕键盘，MutterBoard 更关注：
+相比只做“按钮点击”的简化屏幕键盘，QingBoard 更关注：
 
 - 修饰键语义准确性
 - 组合键可用性
@@ -59,7 +59,7 @@ MutterBoard 使用 GTK3 构建界面，通过 `uinput` 注入真实按键事件�
 
 ## 截图
 
-<img width="2414" height="849" alt="MutterBoard 截图" src="https://github.com/user-attachments/assets/45d70608-855d-4919-b325-4c95ecbaeb11" />
+<img width="2414" height="849" alt="QingBoard 截图" src="https://github.com/user-attachments/assets/45d70608-855d-4919-b325-4c95ecbaeb11" />
 
 ---
 
@@ -103,24 +103,24 @@ yay -S python-uinput steam-devices
 ## 使用
 
 ```bash
-python3 mutterboard.py
+python3 qingboard.py
 ```
 
 ### 可选：创建桌面快捷方式
 
 ```bash
 mkdir -p ~/.local/share/applications/
-cat > ~/.local/share/applications/mutterboard.desktop <<EOF
+cat > ~/.local/share/applications/qingboard.desktop <<EOF
 [Desktop Entry]
-Exec=bash -c 'python3 /path/to/mutterboard.py'
+Exec=bash -c 'python3 /path/to/qingboard.py'
 Icon=preferences-desktop-keyboard
-Name=MutterBoard
+Name=QingBoard
 Terminal=false
 Type=Application
 Categories=Utility;
 NoDisplay=false
 EOF
-chmod +x ~/.local/share/applications/mutterboard.desktop
+chmod +x ~/.local/share/applications/qingboard.desktop
 ```
 
 ---
@@ -130,7 +130,7 @@ chmod +x ~/.local/share/applications/mutterboard.desktop
 配置文件：
 
 ```text
-~/.config/mutterboard/settings.conf
+~/.config/qingboard/settings.conf
 ```
 
 示例：
@@ -208,7 +208,7 @@ capslock_on = false
 
 ---
 
-本项目最初受 [vboard](https://github.com/mdev588/vboard) 启发，感谢其提供的早期思路。经过完全重构后，MutterBoard 已独立发展，与 vboard 在代码和功能上已有显著差异。
+本项目最初受 [vboard](https://github.com/mdev588/vboard) 启发，感谢其提供的早期思路。经过完全重构后，QingBoard 已独立发展，与 vboard 在代码和功能上已有显著差异。
 
 ---
 
