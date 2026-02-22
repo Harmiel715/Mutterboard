@@ -208,6 +208,10 @@ capslock_on = false
 
 ---
 
+本项目最初受 [vboard](https://github.com/mdev588/vboard) 启发，感谢其提供的早期思路。经过完全重构后，MutterBoard 已独立发展，与 vboard 在代码和功能上已有显著差异。
+
+---
+
 ## 许可证
 
 本项目采用 **GNU LGPL v2.1** 许可证，详见 [LICENSE](./LICENSE)。
