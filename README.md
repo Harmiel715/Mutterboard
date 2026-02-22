@@ -208,6 +208,10 @@ Before opening a PR, please:
 
 ---
 
+This project was originally inspired by [vboard](https://github.com/mdev588/vboard). We thank the author for the early ideas. After a complete rewrite, MutterBoard has evolved independently and now differs significantly in both code and functionality.
+
+---
+
 ## License
 
 This project is licensed under **GNU LGPL v2.1**. See [LICENSE](./LICENSE).
