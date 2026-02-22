@@ -1,4 +1,4 @@
-# MutterBoard
+# QingBoard
 
 An on-screen keyboard for Linux that aims to mimic physical keyboard behavior as closely as possible.
 
@@ -8,9 +8,9 @@ An on-screen keyboard for Linux that aims to mimic physical keyboard behavior as
 
 ## Overview
 
-MutterBoard is a GTK3 virtual keyboard that injects real key events through `uinput`. It is designed for touch devices, temporary keyboard replacement, and accessibility-oriented desktop workflows.
+QingBoard is a GTK3 virtual keyboard that injects real key events through `uinput`. It is designed for touch devices, temporary keyboard replacement, and accessibility-oriented desktop workflows.
 
-Compared with simpler virtual keyboards, MutterBoard focuses on:
+Compared with simpler virtual keyboards, QingBoard focuses on:
 
 - Modifier-key semantics
 - Shortcut usability
@@ -59,7 +59,8 @@ Compared with simpler virtual keyboards, MutterBoard focuses on:
 
 ## Screenshots
 
-<img width="2414" height="849" alt="MutterBoard screenshot" src="https://github.com/user-attachments/assets/45d70608-855d-4919-b325-4c95ecbaeb11" />
+<img width="2122" height="753" alt="图片" src="https://github.com/user-attachments/assets/edf1e10f-61c4-400b-91f0-1d2c6f259dec" />
+<img width="2122" height="753" alt="图片" src="https://github.com/user-attachments/assets/7a4e6a0e-6154-487b-8c33-61e961c526dd" />
 
 ---
 
@@ -103,24 +104,24 @@ yay -S python-uinput steam-devices
 ## Usage
 
 ```bash
-python3 mutterboard.py
+python3 qingboard.py
 ```
 
 ### Optional: Create desktop shortcut
 
 ```bash
 mkdir -p ~/.local/share/applications/
-cat > ~/.local/share/applications/mutterboard.desktop <<EOF
+cat > ~/.local/share/applications/qingboard.desktop <<EOF
 [Desktop Entry]
-Exec=bash -c 'python3 /path/to/mutterboard.py'
+Exec=bash -c 'python3 /path/to/qingboard.py'
 Icon=preferences-desktop-keyboard
-Name=MutterBoard
+Name=QingBoard
 Terminal=false
 Type=Application
 Categories=Utility;
 NoDisplay=false
 EOF
-chmod +x ~/.local/share/applications/mutterboard.desktop
+chmod +x ~/.local/share/applications/qingboard.desktop
 ```
 
 ---
@@ -130,7 +131,7 @@ chmod +x ~/.local/share/applications/mutterboard.desktop
 Config file:
 
 ```text
-~/.config/mutterboard/settings.conf
+~/.config/qingboard/settings.conf
 ```
 
 Example:
@@ -208,7 +209,7 @@ Before opening a PR, please:
 
 ---
 
-This project was originally inspired by [vboard](https://github.com/mdev588/vboard). We thank the author for the early ideas. After a complete rewrite, MutterBoard has evolved independently and now differs significantly in both code and functionality.
+This project was originally inspired by [vboard](https://github.com/mdev588/vboard). We thank the author for the early ideas. After a complete rewrite, QingBoard has evolved independently and now differs significantly in both code and functionality.
 
 ---
 

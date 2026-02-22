@@ -1,5 +1,6 @@
-# MutterBoard 屏幕键盘主程序
-# MutterBoard on‑screen keyboard main program
+ 
+# QingBoard 屏幕键盘主程序
+# QingBoard on‑screen keyboard main program
 # 基于 GTK3 和 uinput，实现硬件级修饰键语义、多点触控、空格光标模式等
 # Based on GTK3 and uinput, providing hardware‑level modifier semantics, multi‑touch, space cursor mode, etc.
 
@@ -282,10 +283,10 @@ class KeyboardEngine:
 # Main window
 # -------------------------
 
-class MutterBoard(Gtk.Window):
+class QingBoard(Gtk.Window):
     """主窗口类，包含 UI 构建、事件处理、修饰键逻辑、空格光标模式等 | Main window class, handles UI building, event processing, modifier logic, space cursor mode, etc."""
     def __init__(self) -> None:
-        super().__init__(title="MutterBoard", name="toplevel")
+        super().__init__(title="QingBoard", name="toplevel")
         self._configure_window()
         self._configure_storage()
 
@@ -367,7 +368,7 @@ class MutterBoard(Gtk.Window):
 
     def _configure_storage(self) -> None:
         """设置配置文件路径 | Set configuration file path"""
-        self.config_dir = os.path.expanduser("~/.config/mutterboard")
+        self.config_dir = os.path.expanduser("~/.config/qingboard")
         self.config_file = os.path.join(self.config_dir, "settings.conf")
         self.config = configparser.ConfigParser()
 
@@ -1238,7 +1239,7 @@ class MutterBoard(Gtk.Window):
 # -------------------------
 
 if __name__ == "__main__":
-    win = MutterBoard()
+    win = QingBoard()
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
     win.toggle_controls()
