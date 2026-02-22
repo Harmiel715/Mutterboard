@@ -11,7 +11,7 @@ os.environ.setdefault("GDK_BACKEND", "x11")
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 
 KEY_MAPPING: Dict[int, str] = {
@@ -181,6 +181,25 @@ class RepeatState:
 
 
 @dataclass
+class SpaceTrackingState:
+    long_press_source: Optional[int] = None
+    cursor_mode: bool = False
+    last_x: float = 0.0
+    last_y: float = 0.0
+    last_time: float = 0.0
+    accum_x: float = 0.0
+    accum_y: float = 0.0
+
+
+@dataclass
+class TouchState:
+    key_code: int
+    button: Gtk.Button
+    repeat_state: Optional[RepeatState] = None
+    space_tracking: Optional[SpaceTrackingState] = None
+
+
+@dataclass
 class ModifierState:
     pressed: bool = False
     latched: bool = False
@@ -207,6 +226,8 @@ class KeyboardEngine:
 
 
 class MutterBoard(Gtk.Window):
+    MOUSE_TOUCH_ID = -1
+
     def __init__(self) -> None:
         super().__init__(title="MutterBoard", name="toplevel")
         self._configure_window()
@@ -216,20 +237,16 @@ class MutterBoard(Gtk.Window):
         self.modifiers: Dict[int, ModifierState] = {key: ModifierState() for key in MODIFIER_KEYS}
         self.modifier_buttons: Dict[int, Gtk.Button] = {}
         self.regular_buttons: Dict[str, Gtk.Button] = {}
+        self.button_to_key: Dict[Gtk.Button, int] = {}
+        self.touch_states: Dict[int, TouchState] = {}
         self.repeat_states: Dict[int, RepeatState] = {}
         self.active_keys: Set[int] = set()
+        self.key_rects: List[tuple[Gtk.Button, int, Gdk.Rectangle]] = []
         self.space_button: Optional[Gtk.Button] = None
         self.space_button_default_label = "Space"
         self.caps_indicator_button: Optional[Gtk.Button] = None
 
         self.space_long_press_ms = 300
-        self.space_cursor_mode = False
-        self.space_long_press_source: Optional[int] = None
-        self.space_last_x = 0.0
-        self.space_last_y = 0.0
-        self.space_last_motion_at = 0.0
-        self.space_accum_x = 0.0
-        self.space_accum_y = 0.0
 
         self.last_shift_tap_at = 0.0
         self.double_shift_timeout_ms = 380
@@ -249,6 +266,8 @@ class MutterBoard(Gtk.Window):
         self.apply_css()
 
         self.connect("configure-event", self.on_resize)
+        self.connect("size-allocate", self._on_size_allocate)
+        self.connect("event", self.on_window_event)
         self.connect("destroy", lambda _: self.save_settings())
 
     def _configure_window(self) -> None:
@@ -339,14 +358,11 @@ class MutterBoard(Gtk.Window):
                 button.get_style_context().add_class("key-button")
                 button.set_can_focus(False)
                 button.set_focus_on_click(False)
-                button.connect("pressed", self.on_button_press, key_code)
-                button.connect("released", self.on_button_release, key_code)
+                self.button_to_key[button] = key_code
 
                 if key_code == uinput.KEY_SPACE:
                     self.space_button = button
                     self.space_button_default_label = shown
-                    button.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
-                    button.connect("motion-notify-event", self.on_space_motion)
 
                 grid.attach(button, col, row_index, width, 1)
                 col += width
@@ -355,6 +371,33 @@ class MutterBoard(Gtk.Window):
                     self.modifier_buttons[key_code] = button
                 else:
                     self.regular_buttons[label] = button
+
+    def _on_size_allocate(self, _widget, _allocation) -> None:
+        GLib.idle_add(self._update_key_rects)
+
+    def _update_key_rects(self) -> bool:
+        self.key_rects.clear()
+        for button, key_code in self.button_to_key.items():
+            if button.get_window() is None:
+                continue
+            translated = button.translate_coordinates(self, 0, 0)
+            if translated is None:
+                continue
+            x, y = translated
+            alloc = button.get_allocation()
+            rect = Gdk.Rectangle()
+            rect.x = x
+            rect.y = y
+            rect.width = alloc.width
+            rect.height = alloc.height
+            self.key_rects.append((button, key_code, rect))
+        return False
+
+    def _find_key_at(self, x: float, y: float) -> tuple[Optional[Gtk.Button], Optional[int]]:
+        for button, key_code, rect in self.key_rects:
+            if rect.x <= x <= rect.x + rect.width and rect.y <= y <= rect.y + rect.height:
+                return button, key_code
+        return None, None
 
     def _balanced_row_widths(self, row: List[str], target_width: int) -> List[int]:
         widths = [KEY_WIDTHS.get(label, 2) for label in row]
@@ -530,57 +573,126 @@ class MutterBoard(Gtk.Window):
         cr.fill()
         return False
 
-    def on_button_press(self, widget: Gtk.Button, key_code: int) -> None:
+    def on_window_event(self, _widget, event) -> bool:
+        etype = event.get_event_type()
+        if etype in (
+            Gdk.EventType.BUTTON_PRESS,
+            Gdk.EventType.BUTTON_RELEASE,
+            Gdk.EventType.TOUCH_BEGIN,
+            Gdk.EventType.TOUCH_END,
+            Gdk.EventType.TOUCH_UPDATE,
+            Gdk.EventType.TOUCH_CANCEL,
+        ):
+            return self._handle_input_event(event)
+        return False
+
+    def _handle_input_event(self, event) -> bool:
+        etype = event.get_event_type()
+
+        if etype in (Gdk.EventType.BUTTON_PRESS, Gdk.EventType.BUTTON_RELEASE):
+            button = event.get_button()[1] if isinstance(event.get_button(), tuple) else event.get_button()
+            if button != 1:
+                return False
+            touch_id = self.MOUSE_TOUCH_ID
+        else:
+            seq = event.get_event_sequence()
+            touch_id = hash(seq) if seq is not None else self.MOUSE_TOUCH_ID
+
+        coords = event.get_coords()
+        if coords is None:
+            return False
+        x, y = coords
+
+        if etype in (Gdk.EventType.BUTTON_PRESS, Gdk.EventType.TOUCH_BEGIN):
+            self._on_input_begin(touch_id, x, y)
+            return True
+        if etype in (Gdk.EventType.BUTTON_RELEASE, Gdk.EventType.TOUCH_END, Gdk.EventType.TOUCH_CANCEL):
+            self._on_input_end(touch_id)
+            return True
+        if etype == Gdk.EventType.TOUCH_UPDATE:
+            self._on_input_update(touch_id, x, y, event.time)
+            return True
+        return False
+
+    def _on_input_begin(self, touch_id: int, x: float, y: float) -> None:
+        if touch_id in self.touch_states:
+            self._on_input_end(touch_id)
+
+        button, key_code = self._find_key_at(x, y)
+        if button is None or key_code is None:
+            return
+
+        touch_state = TouchState(key_code=key_code, button=button)
+        self.touch_states[touch_id] = touch_state
         self.active_keys.add(key_code)
 
         if key_code == uinput.KEY_CAPSLOCK:
-            self._flash_regular_key(widget)
+            self._flash_regular_key(button)
             self.capslock_on = not self.capslock_on
             self.engine.tap_key(uinput.KEY_CAPSLOCK)
             self._update_caps_indicator()
+            self.touch_states.pop(touch_id, None)
+            self.active_keys.discard(key_code)
             return
 
+        self._paint_key_by_state(key_code)
+
         if key_code in MODIFIER_KEYS:
-            self._paint_pressed(widget, True)
             self._on_modifier_press(key_code)
             self._update_shift_labels()
             return
 
         if key_code == uinput.KEY_SPACE:
-            self._paint_pressed(widget, True)
-            self._begin_space_tracking()
+            self._begin_space_tracking(touch_id)
             return
 
         for state in self.modifiers.values():
             if state.pressed:
                 state.used_in_combo = True
 
-        self._flash_regular_key(widget)
         self.engine.tap_key(key_code)
-        self._start_repeat(key_code)
+        self._start_repeat(touch_id, key_code)
 
-    def on_button_release(self, widget: Gtk.Button, key_code: int) -> None:
-        self.active_keys.discard(key_code)
-        if key_code in MODIFIER_KEYS or key_code == uinput.KEY_SPACE:
-            self._paint_pressed(widget, False)
+    def _on_input_end(self, touch_id: int) -> None:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is None:
+            return
+
+        key_code = touch_state.key_code
+        has_same_key = any(state.key_code == key_code for state in self.touch_states.values())
+        if not has_same_key:
+            self.active_keys.discard(key_code)
 
         if key_code == uinput.KEY_CAPSLOCK:
             return
 
         if key_code in MODIFIER_KEYS:
             self._on_modifier_release(key_code)
+            self.touch_states.pop(touch_id, None)
+            self._paint_key_by_state(key_code)
             self._update_shift_labels()
             return
 
         if key_code == uinput.KEY_SPACE:
-            self._finish_space_tracking()
+            self._finish_space_tracking(touch_id)
+            self.touch_states.pop(touch_id, None)
+            self._paint_key_by_state(key_code)
             self._release_one_shot_modifiers()
             self._update_shift_labels()
             return
 
-        self._cancel_repeat(key_code)
+        self._cancel_repeat(touch_id)
+        self.touch_states.pop(touch_id, None)
+        self._paint_key_by_state(key_code)
         self._release_one_shot_modifiers()
         self._update_shift_labels()
+
+    def _on_input_update(self, touch_id: int, x: float, y: float, event_time_ms: int) -> None:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is None:
+            return
+        if touch_state.key_code == uinput.KEY_SPACE and touch_state.space_tracking is not None:
+            self._on_space_motion(touch_id, x, y, event_time_ms)
 
     def _on_modifier_press(self, key_code: int) -> None:
         state = self.modifiers[key_code]
@@ -666,6 +778,19 @@ class MutterBoard(Gtk.Window):
         if button is not None:
             self._paint_pressed(button, active)
 
+    def _paint_key_by_state(self, key_code: int) -> None:
+        button = self.modifier_buttons.get(key_code)
+        if button is None:
+            label = KEY_MAPPING.get(key_code)
+            if label is None:
+                return
+            plain_label = label[:-2] if label.endswith("_L") or label.endswith("_R") else label
+            button = self.regular_buttons.get(plain_label)
+        if button is None:
+            return
+        is_pressed = any(state.key_code == key_code for state in self.touch_states.values())
+        self._paint_pressed(button, is_pressed)
+
     def _paint_pressed(self, button: Gtk.Button, active: bool) -> None:
         style = button.get_style_context()
         if active:
@@ -689,31 +814,37 @@ class MutterBoard(Gtk.Window):
             if button is not None:
                 button.set_label(symbol if shift_active else plain)
 
-    def _start_repeat(self, key_code: int) -> None:
+    def _start_repeat(self, touch_id: int, key_code: int) -> None:
         if key_code in MODIFIER_KEYS or key_code == uinput.KEY_SPACE:
             return
-        self._cancel_repeat(key_code)
+        self._cancel_repeat(touch_id)
         state = RepeatState()
-        state.delay_source = GLib.timeout_add(420, self._repeat_delay_done, key_code)
-        self.repeat_states[key_code] = state
+        state.delay_source = GLib.timeout_add(420, self._repeat_delay_done, touch_id)
+        self.repeat_states[touch_id] = state
 
-    def _repeat_delay_done(self, key_code: int) -> bool:
-        state = self.repeat_states.get(key_code)
-        if state is None or key_code not in self.active_keys:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is not None:
+            touch_state.repeat_state = state
+
+    def _repeat_delay_done(self, touch_id: int) -> bool:
+        touch_state = self.touch_states.get(touch_id)
+        state = self.repeat_states.get(touch_id)
+        if touch_state is None or state is None:
             return False
-        state.repeat_source = GLib.timeout_add(70, self._repeat_tick, key_code)
+        state.repeat_source = GLib.timeout_add(70, self._repeat_tick, touch_id)
         state.delay_source = None
         return False
 
-    def _repeat_tick(self, key_code: int) -> bool:
-        if key_code not in self.active_keys:
-            self._cancel_repeat(key_code)
+    def _repeat_tick(self, touch_id: int) -> bool:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is None:
+            self._cancel_repeat(touch_id)
             return False
-        self.engine.tap_key(key_code)
+        self.engine.tap_key(touch_state.key_code)
         return True
 
-    def _cancel_repeat(self, key_code: int) -> None:
-        state = self.repeat_states.pop(key_code, None)
+    def _cancel_repeat(self, touch_id: int) -> None:
+        state = self.repeat_states.pop(touch_id, None)
         if state is None:
             return
         if state.delay_source:
@@ -721,35 +852,35 @@ class MutterBoard(Gtk.Window):
         if state.repeat_source:
             GLib.source_remove(state.repeat_source)
 
-    def _begin_space_tracking(self) -> None:
-        self._cancel_space_long_press()
-        self.space_cursor_mode = False
-        self._set_space_cursor_visual(False)
-        self.space_accum_x = 0.0
-        self.space_accum_y = 0.0
-        self.space_last_motion_at = 0.0
-        self.space_long_press_source = GLib.timeout_add(self.space_long_press_ms, self._enter_space_cursor_mode)
+    def _begin_space_tracking(self, touch_id: int) -> None:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is None:
+            return
+        tracking = SpaceTrackingState()
+        touch_state.space_tracking = tracking
+        tracking.long_press_source = GLib.timeout_add(self.space_long_press_ms, self._enter_space_cursor_mode, touch_id)
 
-    def _finish_space_tracking(self) -> None:
-        moved = self.space_cursor_mode
-        self._cancel_space_long_press()
-        self.space_cursor_mode = False
-        self._set_space_cursor_visual(False)
-        self.space_accum_x = 0.0
-        self.space_accum_y = 0.0
-        self.space_last_motion_at = 0.0
+    def _finish_space_tracking(self, touch_id: int) -> None:
+        touch_state = self.touch_states.get(touch_id)
+        tracking = touch_state.space_tracking if touch_state is not None else None
+        moved = bool(tracking and tracking.cursor_mode)
+        self._cancel_space_long_press(touch_id)
+        self._set_space_cursor_visual(any(s.space_tracking and s.space_tracking.cursor_mode for s in self.touch_states.values()))
         if not moved:
             self.engine.tap_key(uinput.KEY_SPACE)
 
-    def _cancel_space_long_press(self) -> None:
-        if self.space_long_press_source is not None:
-            GLib.source_remove(self.space_long_press_source)
-            self.space_long_press_source = None
+    def _cancel_space_long_press(self, touch_id: int) -> None:
+        touch_state = self.touch_states.get(touch_id)
+        tracking = touch_state.space_tracking if touch_state is not None else None
+        if tracking is not None and tracking.long_press_source is not None:
+            GLib.source_remove(tracking.long_press_source)
+            tracking.long_press_source = None
 
-    def _enter_space_cursor_mode(self) -> bool:
-        if uinput.KEY_SPACE not in self.active_keys:
+    def _enter_space_cursor_mode(self, touch_id: int) -> bool:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is None or touch_state.space_tracking is None or touch_state.key_code != uinput.KEY_SPACE:
             return False
-        self.space_cursor_mode = True
+        touch_state.space_tracking.cursor_mode = True
         self._set_space_cursor_visual(True)
         return False
 
@@ -764,50 +895,51 @@ class MutterBoard(Gtk.Window):
             self.space_button.set_label(self.space_button_default_label)
             style.remove_class("cursor-mode")
 
-    def on_space_motion(self, _widget: Gtk.Button, event: Gdk.EventMotion) -> bool:
-        if uinput.KEY_SPACE not in self.active_keys:
-            return False
+    def _on_space_motion(self, touch_id: int, x: float, y: float, event_time_ms: int) -> None:
+        touch_state = self.touch_states.get(touch_id)
+        if touch_state is None or touch_state.space_tracking is None:
+            return
+        tracking = touch_state.space_tracking
 
-        if self.space_last_motion_at == 0.0:
-            self.space_last_x = event.x
-            self.space_last_y = event.y
-            self.space_last_motion_at = event.time / 1000.0
-            return True
+        if tracking.last_time == 0.0:
+            tracking.last_x = x
+            tracking.last_y = y
+            tracking.last_time = event_time_ms / 1000.0
+            return
 
-        dx = event.x - self.space_last_x
-        dy = event.y - self.space_last_y
-        dt = max((event.time / 1000.0) - self.space_last_motion_at, 0.001)
-        self.space_last_x = event.x
-        self.space_last_y = event.y
-        self.space_last_motion_at = event.time / 1000.0
+        dx = x - tracking.last_x
+        dy = y - tracking.last_y
+        dt = max((event_time_ms / 1000.0) - tracking.last_time, 0.001)
+        tracking.last_x = x
+        tracking.last_y = y
+        tracking.last_time = event_time_ms / 1000.0
 
-        if not self.space_cursor_mode:
-            return True
+        if not tracking.cursor_mode:
+            return
 
-        self.space_accum_x += dx
-        self.space_accum_y += dy
+        tracking.accum_x += dx
+        tracking.accum_y += dy
         speed = ((dx * dx + dy * dy) ** 0.5) / dt
         step_threshold = max(8.0, 28.0 - min(speed / 120.0, 16.0))
-        self._emit_cursor_moves(step_threshold)
-        return True
+        self._emit_cursor_moves(tracking, step_threshold)
 
-    def _emit_cursor_moves(self, step_threshold: float) -> None:
-        if abs(self.space_accum_x) >= abs(self.space_accum_y):
-            steps = int(abs(self.space_accum_x) / step_threshold)
+    def _emit_cursor_moves(self, tracking: SpaceTrackingState, step_threshold: float) -> None:
+        if abs(tracking.accum_x) >= abs(tracking.accum_y):
+            steps = int(abs(tracking.accum_x) / step_threshold)
             if steps > 0:
-                key = uinput.KEY_RIGHT if self.space_accum_x > 0 else uinput.KEY_LEFT
+                key = uinput.KEY_RIGHT if tracking.accum_x > 0 else uinput.KEY_LEFT
                 for _ in range(steps):
                     self.engine.tap_key(key)
-                self.space_accum_x -= step_threshold * steps if self.space_accum_x > 0 else -step_threshold * steps
-                self.space_accum_y = 0.0
+                tracking.accum_x -= step_threshold * steps if tracking.accum_x > 0 else -step_threshold * steps
+                tracking.accum_y = 0.0
         else:
-            steps = int(abs(self.space_accum_y) / step_threshold)
+            steps = int(abs(tracking.accum_y) / step_threshold)
             if steps > 0:
-                key = uinput.KEY_DOWN if self.space_accum_y > 0 else uinput.KEY_UP
+                key = uinput.KEY_DOWN if tracking.accum_y > 0 else uinput.KEY_UP
                 for _ in range(steps):
                     self.engine.tap_key(key)
-                self.space_accum_y -= step_threshold * steps if self.space_accum_y > 0 else -step_threshold * steps
-                self.space_accum_x = 0.0
+                tracking.accum_y -= step_threshold * steps if tracking.accum_y > 0 else -step_threshold * steps
+                tracking.accum_x = 0.0
 
     def _on_window_realize(self, *_args) -> None:
         self._raise_window_topmost()
