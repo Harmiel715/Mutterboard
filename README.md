@@ -10,7 +10,12 @@ An on-screen keyboard for Linux that aims to mimic physical keyboard behavior as
 
 MutterBoard is a GTK3 virtual keyboard that injects real key events through `uinput`. It is designed for touch devices, temporary keyboard replacement, and accessibility-oriented desktop workflows.
 
-Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key semantics**, **shortcut usability**, and **state synchronization** (e.g., CapsLock indicator).
+Compared with simpler virtual keyboards, MutterBoard focuses on:
+
+- Modifier-key semantics
+- Shortcut usability
+- State synchronization (e.g., CapsLock indicator)
+- Multi-touch support (independent touch point tracking)
 
 ---
 
@@ -26,19 +31,22 @@ Compared with simpler virtual keyboards, MutterBoard focuses on **modifier-key s
 - **Fast sequential taps**
   - Regular keys are emitted on press (tap-first strategy), so quick consecutive taps remain reliable even in single-pointer touch stacks (common with XWayland).
 - **Global top-layer window**
-  - Window keeps utility decorations (minimize/maximize/close) and repeatedly raises itself with sticky + keep-above hints to reduce IME overlap risk.
+  - Keeps minimize/maximize/close decorations, uses NORMAL window type (with draggable titlebar) and repeatedly raises itself with sticky + keep-above hints to reduce IME overlap risk.
 - **Long-press repeat**
-  - Regular keys repeat while held, after a delay.
+  - Regular keys repeat while held (delay 420ms, interval 70ms).
 - **Space cursor mode**
-  - Long-press Space to enter cursor mode.
-  - While active, the Space key label switches to `◀ Space ▶` with a highlighted border and text.
+  - Long-press Space to enter cursor mode; the key label changes to `◀ Space ▶` with a highlighted border and text.
   - Slide horizontally to send Left/Right; slide vertically to send Up/Down.
+  - Trigger threshold adapts dynamically to sliding speed for more natural control.
 - **CapsLock handling**
   - CapsLock key toggles internal state, sends the key event, and updates the header indicator.
   - Header indicator is a button‑style label matching other controls; it turns accent‑colored when CapsLock is on.
   - CapsLock state is saved and restored on next launch.
 - **Dynamic key labels with Shift**
   - Symbol keys update labels while Shift is active (e.g., `1` → `!`).
+- **Multi-touch support**
+  - Each touch point is tracked independently, allowing multiple keys to be pressed simultaneously without interference.
+  - Touch motion is used for Space cursor mode, enhancing the touchpad experience.
 - **Customizable UI**
   - Themes: `Dark`, `Light`, `Midnight`
   - Reduced key opacity for better readability of background content when using translucent themes.
@@ -203,4 +211,3 @@ Before opening a PR, please:
 ## License
 
 This project is licensed under **GNU LGPL v2.1**. See [LICENSE](./LICENSE).
-```
