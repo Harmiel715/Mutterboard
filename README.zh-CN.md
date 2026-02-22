@@ -59,7 +59,8 @@ QingBoard 使用 GTK3 构建界面，通过 `uinput` 注入真实按键事件，
 
 ## 截图
 
-<img width="2414" height="849" alt="QingBoard 截图" src="https://github.com/user-attachments/assets/45d70608-855d-4919-b325-4c95ecbaeb11" />
+<img width="2122" height="753" alt="图片" src="https://github.com/user-attachments/assets/edf1e10f-61c4-400b-91f0-1d2c6f259dec" />
+<img width="2122" height="753" alt="图片" src="https://github.com/user-attachments/assets/7a4e6a0e-6154-487b-8c33-61e961c526dd" />
 
 ---
 
